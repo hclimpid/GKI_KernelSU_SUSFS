@@ -276,6 +276,23 @@ fix_task_mmu_show_pad() {
   fi
 }
 
+fix_task_mmu_missing_susfs_include() {
+  local task_mmu_file="./fs/proc/task_mmu.c"
+  local susfs_guard="#if defined(CONFIG_KSU_SUSFS_SUS_KSTAT) || defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)"
+  local susfs_end="#endif // #if defined(CONFIG_KSU_SUSFS_SUS_KSTAT) || defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)"
+
+  if [[ -f "$task_mmu_file" ]] \
+    && grep -qE 'SUSFS_IS_INODE_(OPEN_REDIRECT|SUS_MAP)' "$task_mmu_file" \
+    && ! grep -qF '#include <linux/susfs_def.h>' "$task_mmu_file"; then
+    echo "补充 task_mmu.c 缺失的 SUSFS 头文件上下文"
+    if grep -qF '#include <trace/hooks/mm.h>' "$task_mmu_file"; then
+      sed -i "/^#include <trace\\/hooks\\/mm.h>$/a ${susfs_guard}\n#include <linux/susfs_def.h>\n${susfs_end}" "$task_mmu_file"
+    else
+      sed -i "/^#include <linux\\/pkeys.h>$/a ${susfs_guard}\n#include <linux/susfs_def.h>\n${susfs_end}" "$task_mmu_file"
+    fi
+  fi
+}
+
 # Android 12 - 5.10 修复
 if [[ "$ANDROID_VERSION" == "android12" && "$KERNEL_VERSION" == "5.10" ]]; then
   # 修复 2024-11 分支: mmap.c 调用了 vm_flags_clear()，但同分支 mm.h 未提供 helper
@@ -325,3 +342,5 @@ if [[ "$ANDROID_VERSION" == "android16" && "$KERNEL_VERSION" == "6.12" ]]; then
     echo "已修复 setuid_hook.c 重复定义问题"
   fi
 fi
+
+fix_task_mmu_missing_susfs_include
